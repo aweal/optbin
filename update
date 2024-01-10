@@ -1,0 +1,279 @@
+#!/bin/sh
+
+SHOW_DEBUG_MSG=0
+FULL_UPDATE=0
+ONLY_FETCH=0
+ONLY_SYNC=0
+NO_SYNC=0
+
+
+source /lib/gentoo/functions.sh
+
+trap ctrl_c INT
+
+function ctrl_c() {
+    ewarn "Exit update :-( ..."
+    eend
+    exit 2
+    }
+
+fn_yes_no(){
+    case $1 in
+	y|Y|yes|Yes )
+	    return 0
+	    ;;
+	*)
+	    return 1
+	    ;;
+esac
+}
+
+fn_sync(){
+    ebegin "emerge sync"
+    emerge --sync
+    if [[ $? -eq 0 ]]; then
+        veinfo "Sync complete ;-)"
+        ewend
+    else
+        eerror "Failed sync"
+        ewend 1
+       	continue_ask=0
+	    read  -t 10 -p "Press (y)es to exit or enykey 'The Enykey'...  to continue ... " continue_ask
+	    fn_yes_no $continue_ask
+    	[[ $? -eq 0 ]] && exit 0 || einfo "Continue ... "
+    fi
+    if [[ $FULL_UPDATE -eq 1 ]] ; then
+        einfo "eix-update"
+    	eix-update
+	    ewend $?
+    fi
+}
+
+fn_fetch(){
+    ebegin "Start download source"
+    emerge -fuDN world
+    eend $?
+    #
+    #--fetchonly (сокращенно -f)
+    # Вместо сборки пакета будут только загружены файлы для всех пакетов
+    if [[ $? -eq 0 ]] ; then
+        veinfo "Download complete. Once the work To complete the installation of these packages, run the script without the --fetch-only option."
+        veend
+    else
+	    veinfo "Download Failed"
+	    veend 1
+    	#inetstat
+    fi
+    exit 0
+#    [[ $ONLY_FETCH -eq 1 ]] && exit 0
+}
+
+fn_compile(){
+    #--update| -u Обновляет пакеты до версии, маркированной как лучшая
+    #-newuse| -N пересобираются пакеты, в которых с момента предыдущей компиляции изменились USE-флаги
+    #--deep|-D считывать полное дерево зависимостей пакетов вместо проверки прямых зависимостей
+    #--debug |-d запустить команду сборки в режиме отладки
+    #--columns При использовании в связке с --pretend название пакета отображаются в выровненном формате
+    #--ignore-default-opts   Значение переменной EMERGE_DEFAULT_OPTS будет игнорироваться
+    #-j [JOBS], --jobs[=JOBS] сколько пакетов будет собираться одновременно
+    #--quiet[ y | n ] (сокращенно -q) сократить объем сообщений portage
+
+    ebegin "Begin compiling"
+    #emerge -uDNp --columns -t @world
+    [[ !EINFO_QUIET ]] && emerge -uDNp -t @world
+    DEBUG=""
+    QUIET=""
+    WORLD=" world"
+    if [[ $SHOW_DEBUG_MSG -eq 1 ]]; then
+        vewarn "Debug mode ON ..."
+    	DEBUG="d"
+    fi
+    [[ $EINFO_QUIET -eq 1 ]] && QUIET="q"
+
+    if [[ $FULL_UPDATE -eq 1 ]]; then
+	#emerge --update --newuse --deep --with-bdeps=y @world
+    	WORLD=" --with-bdeps=y @world"
+    fi
+
+    if [ $SHOW_DEBUG_MSG -eq 1 ]; then
+    	emerge --ignore-default-opts --jobs=1 --quiet-build=n  -uDN$DEBUG $WORLD
+    else
+    	emerge -uDN$QUIET $WORLD
+    fi
+    ebegin "Compilation is complete."
+    eend $?
+}
+
+fn_fcg_update(){
+    DEBUG=""
+    QUIET=""
+    [[ $EINFO_QUIET -eq 1 ]] && QUIET="-q"
+    [[ $SHOW_DEBUG_MSG -eq 1 ]] && DEBUG="--debug"
+
+    ebegin "Config update"
+
+    env-update
+    source /etc/profile
+    etc-update
+
+    veinfo "Config update"
+    eend $?
+
+    ebegin "Rebuild ..."
+    revdep-rebuild.sh $DEBUG $QUIET
+    veinfo "The rebuilding has been completed"
+    eend $?
+
+    if [[ $FULL_UPDATE -eq 1 ]]; then
+        veinfon "additional updates and clean old dependencies, need approved"
+
+    	ebegin " @preserved-rebuild"
+    	emerge @preserved-rebuild $DEBUG  $QUIET
+    	veinfo "@preserved-rebuild completed"
+	    eend $?
+
+        ebegin "@smart-live-rebuild"
+    	emerge -vt @smart-live-rebuild $DEBUG  $QUIET
+        veinfo "smart-live-rebuild completed"
+        eend $?
+
+    	ebegin "The depclean interactive"
+    	emerge --depclean -a $DEBUG  $QUIET
+        veinfo "clean completed"
+        eend $?
+
+    	ebegin "Clean distfiles"
+	    eclean-dist -d $QUIET
+	    veinfo "Clean completed"
+	    eend $?
+
+        ebegin "Clean package"
+        eclean-pkg -d $QUIET
+        veinfo "Clean package complete"
+        eend $?
+
+        #TODO отдельным ключом!
+    	# дважды наебался - стераются логи emegre
+        #ebegin "Clean logs"
+        #for f in `find /var/log/ -type f`; do  echo ""> $f ; done
+        # [[ $? -eq 0 ]] && result_ok || msg_fail " clean logs... "
+
+        # вроде сейчас не косячит уже
+    	ebegin "Clean kernels"
+    	/bin/mount /boot
+    	fsck /boot/
+    	eclean-kernel -n2 -b grub2 $DEBUG -p
+        eclean-kernel -n2 -b grub2 $DEBUG
+        veinfo "Kernel clean complete"
+        eend $?
+
+    	ebegin "trim ROOT "
+        /sbin/fstrim -v /
+        veinfo "TRIM competed"
+        eend $?
+    fi
+}
+
+fn_print_help(){
+    echo -e "\nUsage: update [options]:\n\td|-d|--debug       - show debug msg ..."
+    echo -e "\tv|-v|--verbose     - emerge with --jobs=1 and --quiet-build is n ..."
+    echo -e "\tn|-n|--no-sync     - skip sync ..."
+    echo -e "\tq|-q|--quiet       - quiet mode ..."
+    echo -e "\ts|-s|--sync        - sync only ... "
+    echo -e "\ta|-a|--all         - udpate eix and layman"
+    echo -e "\tf|-f|--fetch-only  - fetch|pretend"
+
+    echo
+
+    echo "update --all --quiet "
+    echo "update -aq"
+    echo "update a q"
+
+    echo -e "\t "
+    exit 0
+}
+
+fn_parse_char(){
+    case "$1" in
+	d|-d|--debug)
+	    SHOW_DEBUG_MSG=1
+	    ;;
+	v|-v|--verbose)
+	    ebegin "Enable verbose mode"
+        [[ $EINFO_QUIET -eq 1 ]] &&
+            echo "The parameters -v (--verbose) and -q (--quiet) are mutually exclusive. Please use only one of them..." ||
+            export EINFO_VERBOSE=1
+        [[ $EINFO_VERBOSE ]] && eend 0 || eend 1
+	    ;;
+	n|-n|--no-sync)
+	    if [[ $ONLY_SYNC -eq 1 ]]; then
+    		echo "Choose either the -n (--no-sync) parameter or the -s (--sync) parameter, as they conflict with each other."
+		    fn_print_help
+		    exit 0
+	    else
+		    NO_SYNC=1
+	    fi
+	    ;;
+	q|-q|--quiet)
+        [[ $EINFO_VERBOSE -eq 1 ]] &&
+            ewarn "The parameters -v (--verbose) and -q (--quiet) are mutually exclusive. Please use only one of them..." ||
+            export EINFO_QUIET=1
+	    ;;
+	s|-s|--sync)
+	    if [[ $NO_SYNC -eq 1 ]]; then
+		    echo "Choose either the -n (--no-sync) parameter or the -s (--sync) parameter, as they conflict with each other."
+	    	fn_print_help
+        else
+		    ONLY_SYNC=1
+	    fi
+	    ;;
+	a|-a|--all)
+	    FULL_UPDATE=1
+	    ;;
+	f|-f|--fetch-only)
+	    ONLY_FETCH=1
+	    ;;
+	h|-h|--help)
+	    fn_print_help
+	    ;;
+	*)
+	    [[ $SHOW_DEBUG_MSG -eq 1 ]] &&
+		echo "DEBUG: wrong parameter $1 ... "
+	    fn_print_help
+	    ;;
+    esac
+    [[ $SHOW_DEBUG_MSG -eq 1 ]] &&
+	echo "DEBUG: accept param $1"
+    return 0
+}
+
+while [ $# -gt 0 ]; do
+    if [[ ${1:0:1} == "-" ]];then
+    	if [[ ${1:1:1}  == "-"   ]]; then
+	        #первые 2 символа --
+	        fn_parse_char "$1"
+    	else
+	        #-uDN
+	        #i=1 пропускаем 1 символ "-"
+	        # и парсим отдельно каждый символ
+    	    for (( i=1; i<${#1}; i++ )); do
+	    	    fn_parse_char ${1:$i:1}
+	        done
+    	fi
+    else
+        if [[ ${#1} -eq 1 ]]; then
+            fn_parse_char ${1:$i:1}
+        fi
+    fi
+    shift
+done
+
+[[ $SHOW_DEBUG_MSG -eq 1 ]]&&
+    echo "$SHOW_DEBUG_MSG $FULL_UPDATE $ONLY_FETCH $ONLY_SYNC $NO_SYNC"
+
+[[ $NO_SYNC -eq 0 ]] && fn_sync
+[[ $ONLY_SYNC -eq 1 ]] && exit 0
+[[ $ONLY_FETCH -eq 1 ]] && fn_fetch
+
+fn_compile
+fn_fcg_update

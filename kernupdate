@@ -1,0 +1,142 @@
+#!/bin/bash
+
+SHOW_DEBUG_MSG=0
+FORCE_REBUILD=0
+DONT_UPDATE_CONFIG=0
+
+unset ARCH
+#default
+
+fn_initialize(){
+    #source msg
+    source /lib/gentoo/functions.sh
+
+    
+    if [[ $SHOW_DEBUG_MSG -eq 1 ]]; then
+        export EINFO_VERBOSE=1
+    fi
+    veinfo "checking root right..."
+
+    if [[ $EUID -ne 0 ]]; then
+        eerror "This script must be run as root"
+	exit 1
+    else
+        veend 0
+    fi
+
+    LINUS=`ls -al /usr/src/linux | sed -r 's/.*linux-//'`
+
+    if [[ -f /boot/grub/grub.cfg ]]; then
+        veinfo "check kernel version"
+    	GRUB_LINUS=`cat /boot/grub/grub.cfg  | grep vmlinuz  |sed -n "1p"| sed -r 's/.*vmlinuz-//; s/ .*//'`
+        [ -z "$GRUB_LINUS" ] && retval=1
+        veend $retval
+    else
+    	eerror "Failed determine linux version from boot file (not exists)..."
+    fi
+
+    veinfo "LINUX = \t\t"$LINUS
+
+	if [[ -z $LINUS ]] ; then
+        eerror "Failed to determine installed linux version... " 
+        eend 1
+        exit 1
+    else eend 0
+    fi
+
+    veinfo "GRUB_LINUS = \t"$GRUB_LINUS
+	if [[ -z $GRUB_LINUS ]]; then
+        eerror "Failed to determine linux version from grub..."
+        eend 1
+        exit 1
+    else eend 0
+    fi
+
+    #veinfo "params: "
+    veinfo "FORCE_REBUILD:\t" $FORCE_REBUILD
+    veinfo "DONT_UPDATE_CONFIG:\t" $DONT_UPDATE_CONFIG
+
+    if [[ $GRUB_LINUS  == $LINUS ]]; then
+	    if [[ $FORCE_REBUILD -eq 1 ]]; then
+            veinfo "Rebuld with exist config ..."
+            DONT_UPDATE_CONFIG=1
+        else
+             eerror "The current kernel has already been compiled, use --force-update or (e)select kernel new. ..."
+                veinfo "kernel list: "
+                [[ $SHOW_DEBUG_MSG -eq 1 ]] &&  /usr/bin/eselect kernel list  || :
+             eend 0
+             exit 0
+        fi
+    fi
+
+	if [ $DONT_UPDATE_CONFIG ]; then
+        veinfo "Rebuild the kernel based on the existing .config file"
+    else
+        veinfo "The kernel build will be based on the old."
+        zcat /proc/config.gz > /usr/src/linux/.config
+        make oldconfig
+        eend $?
+    fi
+
+        fn_build
+        fn_install
+}
+
+fn_build(){
+    veinfo  "Compilation is in progress ..."
+#    [[ $SHOW_DEBUG_MSG -eq 1 ]] &&
+#        substart_msg "Compilation is started ... \n"
+
+    cd /usr/src/linux
+    make -j18 &&
+	make -j18 modules_install
+    eend $?
+
+    veinfo "@@module-rebuild..."
+    #OMG OMG OMD
+    #rm /var/db/.pkg.portage_lockfile
+    #FUCK FUCK FUCK
+    emerge @module-rebuild
+    # MAKEOPTS="-j1" emerge --ignore-default-opts --jobs=1 --quiet-build=n x11-drivers/nvidia-drivers
+    eend $?
+
+    veinfo "kernel clean..."
+    eclean-kernel -n 2
+}
+
+fn_install(){
+    veinfo "Installing new kernel..."
+    make install
+    grub-mkconfig -o /boot/grub/grub.cfg
+    eend $?
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+    d|-d|--debug)
+        SHOW_DEBUG_MSG=1
+	    ;;
+	v|-v|--verbose)
+	    SHOW_DEBUG_MSG=1
+	    ;;
+	f|-f|--force-update)
+	    FORCE_REBUILD=1
+	    ;;
+    m|-m|-makeinstall|--makeinstall)
+         DONT_UPDATE_CONFIG=1
+        ;;
+
+	h|-h|--help)
+	    echo -e  "\tUsage: kernupdate \n\t\t d|-d|--debug  -  show debug msg"
+	    echo -e  "\t\t f|-f|--force-update - rebuild with ZCAT!!! "
+        echo -e  "\t\t m|-m|--makeinstall  - rebuild with current .config "
+
+	    exit 0
+	    ;;
+
+    esac
+    shift
+done
+
+fn_initialize
+exit 0
