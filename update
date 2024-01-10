@@ -45,7 +45,7 @@ fn_sync(){
     if [[ $FULL_UPDATE -eq 1 ]] ; then
         einfo "eix-update"
     	eix-update
-	    ewend $?
+	ewend $?
     fi
 }
 
