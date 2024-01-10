@@ -6,7 +6,6 @@ ONLY_FETCH=0
 ONLY_SYNC=0
 NO_SYNC=0
 
-
 source /lib/gentoo/functions.sh
 
 trap ctrl_c INT
@@ -53,16 +52,14 @@ fn_fetch(){
     ebegin "Start download source"
     emerge -fuDN world
     eend $?
-    #
     #--fetchonly (сокращенно -f)
     # Вместо сборки пакета будут только загружены файлы для всех пакетов
     if [[ $? -eq 0 ]] ; then
         veinfo "Download complete. Once the work To complete the installation of these packages, run the script without the --fetch-only option."
         veend
     else
-	    veinfo "Download Failed"
-	    veend 1
-    	#inetstat
+        veinfo "Download Failed"
+        veend 1
     fi
     exit 0
 #    [[ $ONLY_FETCH -eq 1 ]] && exit 0
@@ -143,9 +140,9 @@ fn_fcg_update(){
         eend $?
 
     	ebegin "Clean distfiles"
-	    eclean-dist -d $QUIET
-	    veinfo "Clean completed"
-	    eend $?
+        eclean-dist -d $QUIET
+        veinfo "Clean completed"
+        eend $?
 
         ebegin "Clean package"
         eclean-pkg -d $QUIET
@@ -220,9 +217,9 @@ fn_parse_char(){
             export EINFO_QUIET=1
 	    ;;
 	s|-s|--sync)
-	    if [[ $NO_SYNC -eq 1 ]]; then
-		    echo "Choose either the -n (--no-sync) parameter or the -s (--sync) parameter, as they conflict with each other."
-	    	fn_print_help
+        if [[ $NO_SYNC -eq 1 ]]; then
+            echo "Choose either the -n (--no-sync) parameter or the -s (--sync) parameter, as they conflict with each other."
+            fn_print_help
         else
 		    ONLY_SYNC=1
 	    fi
@@ -258,7 +255,7 @@ while [ $# -gt 0 ]; do
 	        # и парсим отдельно каждый символ
     	    for (( i=1; i<${#1}; i++ )); do
 	    	    fn_parse_char ${1:$i:1}
-	        done
+	    	done
     	fi
     else
         if [[ ${#1} -eq 1 ]]; then
