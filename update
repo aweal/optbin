@@ -274,3 +274,10 @@ done
 
 fn_compile
 fn_fcg_update
+
+#/etc/portage/env/sys-kernel/gentoo-sources
+#function post_pkg_postinst() {
+#   touch /tmp/.kerupdate
+#}
+
+[[ -f /tmp/.kerupdate ]] && /opt/bin/kernupdate

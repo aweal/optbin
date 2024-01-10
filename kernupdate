@@ -5,13 +5,11 @@ FORCE_REBUILD=0
 DONT_UPDATE_CONFIG=0
 
 unset ARCH
-#default
 
 fn_initialize(){
     #source msg
     source /lib/gentoo/functions.sh
 
-    
     if [[ $SHOW_DEBUG_MSG -eq 1 ]]; then
         export EINFO_VERBOSE=1
     fi
@@ -52,7 +50,6 @@ fn_initialize(){
     else eend 0
     fi
 
-    #veinfo "params: "
     veinfo "FORCE_REBUILD:\t" $FORCE_REBUILD
     veinfo "DONT_UPDATE_CONFIG:\t" $DONT_UPDATE_CONFIG
 
@@ -78,24 +75,23 @@ fn_initialize(){
         eend $?
     fi
 
-        fn_build
-        fn_install
+    fn_build
+    fn_install
 }
 
 fn_build(){
     veinfo  "Compilation is in progress ..."
-#    [[ $SHOW_DEBUG_MSG -eq 1 ]] &&
-#        substart_msg "Compilation is started ... \n"
 
     cd /usr/src/linux
     make -j18 &&
 	make -j18 modules_install
     eend $?
 
-    veinfo "@@module-rebuild..."
+    veinfo "@module-rebuild..."
     #OMG OMG OMD
     #rm /var/db/.pkg.portage_lockfile
     #FUCK FUCK FUCK
+    # stuck on triger update script (post_pkg_postinst /etc/portage/env/sys-kernel/gentoo-sources)
     emerge @module-rebuild
     # MAKEOPTS="-j1" emerge --ignore-default-opts --jobs=1 --quiet-build=n x11-drivers/nvidia-drivers
     eend $?
