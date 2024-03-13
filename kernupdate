@@ -56,7 +56,7 @@ fn_initialize(){
     if [[ $GRUB_LINUS  == $LINUS ]]; then
 	    if [[ $FORCE_REBUILD -eq 1 ]]; then
             veinfo "Rebuld with exist config ..."
-            DONT_UPDATE_CONFIG=1
+            DONT_UPDATE_CONFIG=0
         else
              eerror "The current kernel has already been compiled, use --force-update or (e)select kernel new. ..."
                 veinfo "kernel list: "
@@ -66,14 +66,16 @@ fn_initialize(){
         fi
     fi
 
-	if [ $DONT_UPDATE_CONFIG ]; then
+	if [[ ! $DONT_UPDATE_CONFIG ]]; then
         veinfo "Rebuild the kernel based on the existing .config file"
     else
         veinfo "The kernel build will be based on the old."
         zcat /proc/config.gz > /usr/src/linux/.config
+        cd /usr/src/linux
         make oldconfig
         eend $?
     fi
+
 
     fn_build
     fn_install
@@ -87,6 +89,8 @@ fn_build(){
 	make -j18 modules_install
     eend $?
 
+    cd
+
     veinfo "@module-rebuild..."
     #OMG OMG OMD
     #rm /var/db/.pkg.portage_lockfile
@@ -97,11 +101,12 @@ fn_build(){
     eend $?
 
     veinfo "kernel clean..."
-    eclean-kernel -n 2
+    #eclean-kernel -n2 -A
 }
 
 fn_install(){
     veinfo "Installing new kernel..."
+    cd /usr/src/linux
     make install
     grub-mkconfig -o /boot/grub/grub.cfg
     eend $?
