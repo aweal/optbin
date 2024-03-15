@@ -113,12 +113,12 @@ fn_fcg_update(){
     source /etc/profile
     etc-update
 
-    veinfo "Config update"
+    ebegin "Config update"
     eend $?
 
-    ebegin "Rebuild ..."
+    ebegin "Rebuild"
     revdep-rebuild.sh $DEBUG $QUIET
-    veinfo "The rebuilding has been completed"
+    ebegin "The rebuilding has been completed"
     eend $?
 
     if [[ $FULL_UPDATE -eq 1 ]]; then
